@@ -67,6 +67,37 @@ def test_bandpass_rejects_well_outside_the_band():
     assert 20.0 * np.log10(np.sqrt(np.mean(stopped ** 2)) + 1e-12) < -60.0
 
 
+def test_quiet_band_spread_is_flat_as_its_level_is_swept():
+    """The one-line instrument check that would have caught the filter leak.
+
+    Take the band's per-window level in dB, and measure its spread across windows,
+    then sweep the level the band is *supposed* to contain. If the band holds only
+    what was put in it, the spread is a property of the estimator and stays put. If
+    a loud neighbouring band is leaking in, the quiet band inherits the programme's
+    own volatility and the spread collapses as the injected level rises.
+
+    Measured with the leaky filter: 5.33 dB spread at -90 dBFS against 2.34 dB at
+    -54 dBFS. Measured with the zero stopband: 0.07 dB at all three. A mutation
+    check re-runs this measurement against the old filter to confirm the test still
+    fails on the bug it was written for; a regression test that cannot fail is
+    decoration.
+    """
+    def spread_db(dbfs):
+        x = program_surrogate(8.0, seed=71, hf_floor_db=dbfs)
+        seg = bandpass(x, 17000, 21000)
+        W, H = FS // 2, FS // 2                 # 16 half-second windows
+        levels = np.array([10.0 * np.log10(np.mean(seg[s:s + W] ** 2) + 1e-30)
+                           for s in range(0, len(seg) - W, H)])
+        assert len(levels) >= 12
+        return float(1.4826 * np.median(np.abs(levels - np.median(levels))))
+
+    spreads = np.array([spread_db(f) for f in (-90.0, -72.0, -54.0)])
+    assert spreads.max() < 2.0, f"quiet band too volatile: {spreads}"
+    assert spreads.max() - spreads.min() < 0.8, (
+        f"spread moves with the level it is measuring, which means the band is "
+        f"not isolated: {spreads}")
+
+
 # ------------------------------------------------------------------------- D2 MFSK
 
 def test_mfsk_round_trips_a_beacon_exactly():
@@ -111,6 +142,44 @@ def test_lisnr_two_shape_round_trips():
     y = li.embed(program_surrogate(2.0), seq, start=int(0.5 * FS), level_dbfs=-24)
     dec, _ = li.demod(y, start=int(0.5 * FS), nsym=8)
     assert dec == seq
+
+
+def _clock_error(y, ppm):
+    """Simulate a transmitter/receiver clock offset by resampling."""
+    n = len(y)
+    return np.interp(np.arange(n) * (1.0 + ppm / 1e6), np.arange(n), y)
+
+
+@pytest.mark.parametrize("ppm", [20, 200, 1000])
+def test_mfsk_survives_ordinary_clock_offsets(ppm):
+    """The 26-tone bank spans 2 kHz, so tones sit 76.9 Hz apart and the tolerance
+    is about +-38 Hz, roughly 2000 ppm at 19 kHz. Real clocks are +-10 to 40 ppm.
+    There is no sync tone in the modelled beacon, so nothing corrects this and the
+    limit belongs in the design, not in a footnote."""
+    sp = SILVERPUSH()
+    base = program_surrogate(CLIP)
+    beacon = [0, 3, 11, 19, 25]
+    y = _clock_error(sp.embed(base, beacon, start=int(0.4 * FS), level_dbfs=-24), ppm)
+    dec, _ = sp.demod(y, start=int(0.4 * FS), nsym=5)
+    assert dec == beacon, f"{ppm} ppm clock offset broke an exact decode"
+
+
+def test_mfsk_fails_safe_under_a_large_clock_offset():
+    """At 1% offset every tone lands 2.5 bins away and decoding is a total loss --
+    that is expected. What matters, and what must not regress, is HOW it fails:
+    the symbol gate has to reject rather than hand back a confident wrong beacon.
+    A beacon that decodes wrongly but passes the syntax rules is the failure that
+    would poison an evidence log."""
+    sp = SILVERPUSH()
+    base = program_surrogate(CLIP)
+    wrong_but_valid = 0
+    for k, beacon in enumerate(([0, 3, 11, 19, 25], [0, 1, 2, 3, 4], [0, 25, 24, 23, 22])):
+        y = _clock_error(sp.embed(base, beacon, start=int(0.4 * FS), level_dbfs=-24), 10000.0)
+        dec, conf = sp.demod(y, start=int(0.4 * FS), nsym=5)
+        if silverpush_valid(dec) and dec != beacon:
+            wrong_but_valid += 1
+        assert dec.count(-1) > 0, f"1% offset produced no rejections at all: {dec}"
+    assert wrong_but_valid == 0, "a wrong beacon passed the syntax rules under offset"
 
 
 # ---------------------------------------------------------------------- D3 VP1

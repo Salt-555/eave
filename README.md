@@ -211,16 +211,63 @@ Three traps this project already fell into, recorded so the next one doesn't:
 - **A content-change test must run where the content lives.** Measuring it at 13–16
   kHz on band-limited material gives an empty, near-stationary band whose
   correlation sits on the decision threshold, so tiny level changes flip it.
-- **A learned threshold in the dB domain is deaf in a quiet room.** This one cost the
-  most time and is the reason D1 was replaced. Setting the alarm as
-  `ambient_mean + k·sigma` over the 17–21 kHz band behaves exactly backwards: with an
-  essentially empty band the per-window dB level is a relative measurement of
-  almost nothing, its MAD inflates to 8.56 dB against 2.71 dB for a loaded band, and
-  the gate lands at +29 dB, *above* the measured level of a real −40 dBFS tone. The
-  detector was sensitive in a noisy room and blind in a quiet one. `D1b` fixed it by
-  becoming scale-invariant: measure the peak bin against the median of its own band
-  and require the same bin to hold that contrast across windows. No learned baseline,
-  so nothing to go blind with.
+- **A learned threshold is only as good as the isolation of the band it is learned
+  from.** I wrote this bullet three times, and the first two versions were wrong.
+  What I originally reported was that `ambient_mean + k·sigma` in the dB domain is
+  "deaf in a quiet room", backed by a MAD of 8.56 dB against 2.71 dB and a gate
+  landing at +29 dB. An independent reimplementation reproduced that arithmetic to
+  within 0.13 dB and then destroyed the explanation: after the filter fix above, the
+  spread is *flat* at 0.07 dB from −96 dBFS to −48 dBFS, the same learned gate
+  detects every tone level it had supposedly missed, and the asymmetry vanishes. The
+  band was never quiet and never "a relative measurement of nothing"; it was full of
+  leaked programme audio, and `med + 6σ` had faithfully reported the contamination as
+  a giant threshold. A learned dB gate is in fact *most* sensitive in a genuinely
+  quiet room, because its gate sits lowest there. My headline was backwards twice.
+- **Quote the convention with the number.** That "+29 dB" gate was an internal per-bin
+  normalisation sitting a fixed +52.1 dB above true band dBFS, so it read as an
+  impossible level to anyone who did not know the offset. Every level in this repo is
+  now either dBFS against a full-scale sine, or labelled.
+
+---
+
+## What an independent verification pass changed
+
+Five of the corrections in this section came from measurements I did not run myself.
+The pattern is consistent enough to be the point of the section: my errors were not
+arithmetic, they were claims about what a measurement *meant*.
+
+- **"0 of 200 program clips produced a valid beacon" survives, for a different reason
+  than I gave.** The zero comes from the per-symbol tonality gate (`best/second ≥ 2.0`),
+  which a clean symbol clears only about 0.1% of the time, so five in a row is
+  essentially impossible. The two SilverPush syntax rules contribute nothing: dropping
+  the `'A'` rule changed the count by zero. Worse, my own test generator built beacons
+  as "A plus four distinct letters", so both rules were satisfied by construction
+  2000 out of 2000 runs.
+- **The sample was too small to deserve the word zero.** 0/200 single-window tests
+  bounds the rate at roughly 5,400 false beacons per hour at the search density a real
+  receiver needs. A wider pass over 10,902 windows of real recorded audio bounds it at
+  ≤99/hour. The number is entirely a property of the gate: relaxed to 1.25 it is
+  ~360/hour, and with the gate removed, ~59,000/hour on synthetic audio and
+  ~11,700/hour on real recordings, because about 13% of arbitrary five-symbol windows
+  happen to pass the syntax rules.
+- **"-30 dBFS: 12/12 decoded" was overstated three ways.** The demodulator was handed
+  the exact symbol start the embedder used, so acquisition was never tested. −30 dBFS
+  sits roughly 66 dB above the modelled per-bin noise floor, so it measured nothing
+  near a limit. And the assertion tested *shape*, not content: a wrong decode that
+  happened to be repeat-free and contain `'A'` would have scored as decoded. Now the
+  sweep reports symbol-for-symbol recovery against level, and states the sync
+  dependency: the cliff is about −80 dBFS with the start supplied and about −60 dBFS
+  once the receiver must find it.
+- **Clock offset was never tested and it is the binding constraint.** 26 tones across
+  2 kHz means 76.9 Hz spacing, so ±38 Hz tolerance, about 2000 ppm at 19 kHz. Exact
+  recovery holds to 1000 ppm and is gone at 1800 ppm, and 1% offset is total loss. It
+  fails *safe*, rejecting every symbol rather than reporting a confident wrong beacon,
+  and real clocks are ±10–40 ppm, so this is survivable. It is now pinned by tests
+  because there is no sync tone in the modelled beacon to rescue it.
+- **Real recordings measured 18–20 kHz content at −100 to −136 dBFS.** Ordinary audio
+  genuinely has nothing in this band, which is good for the detector and embarrassing
+  for the test: neither run ever contained content that actually lives where the
+  beacon is assumed to be.
 
 ---
 

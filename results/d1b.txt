@@ -1,0 +1,73 @@
+
+==========================================================================
+D1b  scale-invariant peakiness + bin persistence + absolute floor
+==========================================================================
+  gate: one bin >= 20 dB over its own band median and >= -95 dBFS, held 4 windows
+
+   HF floor      tone    TPR    FPR  contrast dB  level dBFS
+      -84 dB    -52 dBFS   1.00   0.00         75.8       -52.0
+      -84 dB    -46 dBFS   1.00   0.00         81.8       -46.0
+      -84 dB    -40 dBFS   1.00   0.00         87.8       -40.0
+      -84 dB    -34 dBFS   1.00   0.00         93.8       -34.0
+      -84 dB    -28 dBFS   1.00   0.00         99.8       -28.0
+      -84 dB    -22 dBFS   1.00   0.00        105.8       -22.0
+      -72 dB    -52 dBFS   1.00   0.00         63.8       -52.0
+      -72 dB    -46 dBFS   1.00   0.00         69.8       -46.0
+      -72 dB    -40 dBFS   1.00   0.00         75.8       -40.0
+      -72 dB    -34 dBFS   1.00   0.00         81.8       -34.0
+      -72 dB    -28 dBFS   1.00   0.00         87.8       -28.0
+      -72 dB    -22 dBFS   1.00   0.00         93.8       -22.0
+      -60 dB    -52 dBFS   1.00   0.00         51.8       -52.0
+      -60 dB    -46 dBFS   1.00   0.00         57.8       -46.0
+      -60 dB    -40 dBFS   1.00   0.00         63.8       -40.0
+      -60 dB    -34 dBFS   1.00   0.00         69.8       -34.0
+      -60 dB    -28 dBFS   1.00   0.00         75.8       -28.0
+      -60 dB    -22 dBFS   1.00   0.00         81.8       -22.0
+      -48 dB    -52 dBFS   1.00   0.00         39.8       -52.0
+      -48 dB    -46 dBFS   1.00   0.00         45.8       -46.0
+      -48 dB    -40 dBFS   1.00   0.00         51.8       -40.0
+      -48 dB    -34 dBFS   1.00   0.00         57.8       -34.0
+      -48 dB    -28 dBFS   1.00   0.00         63.8       -28.0
+      -48 dB    -22 dBFS   1.00   0.00         69.8       -22.0
+
+==========================================================================
+D1b  FPR against gate, no signal present (24 clean clips x 4 floors)
+==========================================================================
+  gate   12 dB -> 0/96 clips alarmed (0.000)
+  gate   16 dB -> 0/96 clips alarmed (0.000)
+  gate   20 dB -> 0/96 clips alarmed (0.000)
+  gate   26 dB -> 0/96 clips alarmed (0.000)
+  gate   32 dB -> 0/96 clips alarmed (0.000)
+
+==========================================================================
+D1b vs the codec hop: why ultrasonic tracking died
+==========================================================================
+       path   contrast    level   alarm
+     source       93.9    -22.0    True
+       256k       93.6    -22.0    True
+       128k       93.0    -22.0    True
+        96k      101.1    -22.0    True
+        64k       54.7   -107.0   False
+        32k       12.1   -150.1   False
+  contrast alone keeps reporting a line at 32k on a band holding -90 dBFS;
+  the absolute floor is what turns the alarm off.
+
+==========================================================================
+D1b  19 kHz tone surviving 128 kbps AAC, by input level
+==========================================================================
+  input  -40 dBFS -> contrast   74.2 dB,  level   -40.2 dBFS,  alarm True
+  input  -34 dBFS -> contrast   79.0 dB,  level   -34.1 dBFS,  alarm True
+  input  -28 dBFS -> contrast   86.9 dB,  level   -28.0 dBFS,  alarm True
+  input  -22 dBFS -> contrast   93.0 dB,  level   -22.0 dBFS,  alarm True
+  input  -16 dBFS -> contrast   98.8 dB,  level   -16.0 dBFS,  alarm True
+  input  -10 dBFS -> contrast  101.3 dB,  level   -10.1 dBFS,  alarm True
+
+==========================================================================
+D1b  frequency sweep: tuned to 19 kHz, or to the band?
+==========================================================================
+  tone  17200 Hz -> contrast  82.8 dB, tracked bin  17200 Hz, alarm True
+  tone  18000 Hz -> contrast  82.8 dB, tracked bin  18000 Hz, alarm True
+  tone  19000 Hz -> contrast  82.8 dB, tracked bin  19000 Hz, alarm True
+  tone  20000 Hz -> contrast  82.8 dB, tracked bin  20000 Hz, alarm True
+  tone  20800 Hz -> contrast  82.8 dB, tracked bin  20800 Hz, alarm True
+EXIT=0

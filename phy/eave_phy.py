@@ -600,17 +600,23 @@ def exp_D2():
     rng = np.random.default_rng(7)
     ok = 0
     trials = 12
-    for lv in (-30, -24, -18):
-        got = 0
+    print("  NOTE the demodulator is handed the exact symbol start the embedder")
+    print("       used, so acquisition is NOT tested by this block. An ML start")
+    print("       search over offsets moves the usable floor from about -80 dBFS")
+    print("       to about -60 dBFS; see the sweep below for the oracle-sync cliff.")
+    print(f"  {'level':>9}  {'symbol-for-symbol':>18}  {'pass syntax only':>18}")
+    for lv in (-30, -50, -60, -70, -75, -80, -84, -90):
+        exact = valid = 0
         for k in range(trials):
             beacon = [0] + list(rng.choice(np.arange(1, 26), 4, replace=False))
             y = sp.embed(base, beacon, start=int(0.4 * FS), level_dbfs=lv)
-            dec, _ = sp.demod(y, start=int(0.4 * FS) + sp.N * 2, nsym=1)
             d5, _ = sp.demod(y, start=int(0.4 * FS), nsym=5)
-            if silverpush_valid(d5):
-                got += 1
-        print(f"  level {lv:>4} dBFS : {got:>2}/{trials} beacons decoded and "
-              f"validated by the SDK's own two rules")
+            exact += int(d5 == beacon)
+            valid += int(silverpush_valid(d5))
+        print(f"  {lv:>6} dBFS  {exact:>12}/{trials}  {valid:>14}/{trials}")
+    print("  The two columns differ because silverpush_valid() only checks shape")
+    print("  (five symbols, no repeats, 'A' present). A wrong decode with the right")
+    print("  shape would score in the right column and must not be called decoded.")
 
     print("  --- false beacons from ordinary program audio (should be 0) ---")
     fp = 0
@@ -646,7 +652,7 @@ def exp_D3():
             y = y + noise
             b = vp1_acquire(y)
             idx = b["idx"] + len(VP1["header"])
-            acc = float(np.mean(b["bits"][idx:idx + 127] == payload[159 - 32:])) \
+            acc = float(np.mean(b["bits"][idx:idx + 127] == payload[len(VP1["header"]):])) \
                 if b["idx"] >= 0 and len(b["bits"]) >= idx + 127 else float("nan")
             print(f"  {sigma:>6.2f} {snr:>7} {b['score']:>9} "
                   f"{('from ' + str(b['oi'])):>13} {acc:>8.3f}  {b['mode']}")
