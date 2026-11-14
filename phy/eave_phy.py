@@ -37,14 +37,29 @@ def logistic(x):
     return 1.0 / (1.0 + np.exp(-np.clip(x, -60, 60)))
 
 
-def bandpass(x, lo, hi, fs=FS, edge=0.08):
-    """FFT-domain bandpass with raised-logistic skirts (edge = fractional width)."""
+def bandpass(x, lo, hi, fs=FS, edge=0.02):
+    """
+    FFT-domain bandpass: raised-cosine skirts and an EXACT zero stopband.
+
+    The earlier version shaped its skirts with a logistic, which only reaches
+    about -34 dB a few kilohertz past the corner. That is not a measurement
+    filter: loud programme audio leaked into the 17-21 kHz band roughly 10 dB
+    above the synthetic noise floor a sweep was supposed to be setting, so the
+    floor knob barely moved the band it claimed to control. Anything measuring a
+    quiet band must not leak a loud band into it, so the stopband is now zero by
+    construction rather than merely small.
+    """
     x = np.asarray(x, dtype=np.float64)
     X = np.fft.rfft(x)
     f = np.fft.rfftfreq(len(x), 1.0 / fs)
-    wlo = np.maximum(edge * lo, 1.0)
-    whi = np.maximum(edge * hi, 1.0)
-    mask = logistic((f - lo) / wlo) * (1.0 - logistic((f - hi) / whi))
+    wlo = max(edge * lo, 1.0)
+    whi = max(edge * hi, 1.0)
+    mask = np.zeros_like(f)
+    mask[(f >= lo) & (f <= hi)] = 1.0
+    tl = (f > lo - wlo) & (f < lo)
+    mask[tl] = 0.5 - 0.5 * np.cos(np.pi * (f[tl] - (lo - wlo)) / wlo)
+    th = (f > hi) & (f < hi + whi)
+    mask[th] = 0.5 - 0.5 * np.cos(np.pi * ((hi + whi) - f[th]) / whi)
     return np.fft.irfft(X * mask, n=len(x))
 
 

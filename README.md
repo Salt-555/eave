@@ -198,6 +198,16 @@ Three traps this project already fell into, recorded so the next one doesn't:
   fired on a signal whose target band had *dropped* to −89 dBFS: the codec gutted the
   reference band harder than the target band, so the ratio rose on a dead signal.
   Absolute elevation is required alongside ratio.
+- **A measurement filter must not leak into the band it measures.** Found by a test,
+  not by reading. The bandpass used logistic-shaped skirts, which only reach about
+  −34 dB a few kilohertz past the corner, and the synthetic programme audio has wideband
+  transient content out there. Result: the 17–21 kHz band was mostly leakage from the
+  programme, and the noise-floor knob that the whole sensitivity sweep turned moved
+  the band it claimed to control by **0.49 dB for a 24 dB change**. Every floor row in
+  any table produced before this fix was measuring the same room. The skirts are now
+  raised-cosine with an exactly zero stopband, and a test asserts the knob tracks its
+  own band, because a knob that silently does nothing makes the sweep look like it
+  covered conditions it never touched.
 - **A content-change test must run where the content lives.** Measuring it at 13–16
   kHz on band-limited material gives an empty, near-stationary band whose
   correlation sits on the decision threshold, so tiny level changes flip it.
@@ -211,6 +221,25 @@ Three traps this project already fell into, recorded so the next one doesn't:
   becoming scale-invariant: measure the peak bin against the median of its own band
   and require the same bin to hold that contrast across windows. No learned baseline,
   so nothing to go blind with.
+
+---
+
+## Running the checks
+
+```bash
+uv venv .venv && uv pip install --python .venv/bin/python numpy pytest
+.venv/bin/python -m pytest -q phy
+```
+
+Needs numpy; the codec-survival test needs ffmpeg and skips without it. Whole suite
+runs in about three seconds, which is the point: the filter-leak bug above cost hours
+of plausible-looking tables and this suite now catches it in one.
+
+CI runs the same suite on every push. Tests assert **invariants**, not results: a
+number in this README is a claim about one synthetic scenario, whereas a number in a
+test is a property the code must keep having. The known-broken VP1 receiver is checked
+in as `xfail` with its suspected cause in the reason string, so the repo states the bug
+rather than hiding it.
 
 ---
 
