@@ -8,8 +8,14 @@ shape it has. It does not block, jam, or mislead, and in this scope it does not 
 to name the application that reports it either.
 
 > Status: threat model and architecture settled, physical-layer detectors validated
-> offline against synthetic signals, no Android code yet. Nothing here has been
-> measured on real hardware — see [Limits](#limits).
+> offline against synthetic signals. A first live Android detector (foreground
+> service, held-tone + periodic-mark) is in `android/` and its JVM tests pass.
+> Real-microphone feasibility is measured in [docs/DEVICE-P0.md](docs/DEVICE-P0.md);
+> false-alarm behaviour against real programme audio in
+> [docs/REAL-AUDIO.md](docs/REAL-AUDIO.md) — the held-tone gate holds there
+> (0/5 recordings, 14.7 dB margin), the mark gate does not and is flagged.
+> Nothing has yet been measured over the air; the −95 dBFS floor constant is
+> still a placeholder. See [Limits](#limits).
 
 ---
 
@@ -336,10 +342,14 @@ Stated plainly, because a tool that overstates its reach is worse than none.
   microphone access for Eave exactly as it does for the trackers. An always-on mode
   with a concealed foreground service is technically reachable and would make Eave
   indistinguishable from what it hunts. The persistent notification stays.
-- **Every sensitivity figure is synthetic until P0.** The Android compatibility
-  definition permits up to ±30 dB of droop between 7 kHz and 22 kHz on a device that
-  still claims `UNPROCESSED` support, so real thresholds will move by an amount that
-  is currently unknown.
+- **Sensitivity figures are still synthetic; feasibility figures are not.**
+  P0 has run: what the Pixel 10 Pro input path passes above 16 kHz is
+  measured ([docs/DEVICE-P0.md](docs/DEVICE-P0.md)). Detection thresholds
+  have not been measured on hardware — the −95 dBFS floor is a placeholder,
+  and the Android compatibility definition permits up to ±30 dB of droop
+  between 7 kHz and 22 kHz on a device that still claims `UNPROCESSED`
+  support, so real thresholds will move by an amount that is currently
+  unknown.
 - **No server, ever.** Eave uploads nothing and holds no accounts. A counter-surveillance
   tool with a backend is just a fingerprinting SDK with better branding.
 
