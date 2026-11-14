@@ -1,10 +1,19 @@
 # Eave
 
 Acoustic counter-surveillance for a Pixel 10. Detector, not defender: it tells you
-when a channel is live, and attributes it to a package where the OS lets it.
+when a channel is live, where it sits, and what shape it has.
 
 Status: theory crafted, PHY validated offline, no device code yet.
 Owner: Salt. Prototype: `phy/eave_phy.py`
+
+> **Current scope: emitter detection only (Plane A).** Listen for devices transmitting
+> over sound. Planes B and C below are the design of record for the wider tool and are
+> **not being built**: no AppOps watcher, no Shizuku, no per-package traffic, no
+> attribution. They are kept because the analysis is verified and expensive to redo,
+> and because the blind spot this scope accepts is defined by what they would have done.
+> Consequences, stated for the shipping tool: passive acoustic fingerprinting and
+> television-internal content recognition emit nothing, so they are undetectable here
+> at any sensitivity.
 
 ---
 
@@ -143,7 +152,7 @@ repeat. Run a control trial with the TV off to measure the false-correlate rate.
 This turns passive monitoring into an experiment with a known answer, which is the
 only way to say "app X reported" rather than "app X might report".
 
-**M4 OS-truth watcher** (Shizuku). Subscribe `OPSTR_RECORD_AUDIO` active-changes for
+- **M4 OS-truth watcher** (Shizuku). *DESCOPED.* Subscribe `OPSTR_RECORD_AUDIO` active-changes for
 all uids. Log uid, package, **attribution tag**, active, timestamps (boot + wall).
 The attribution tag is the tell: an SDK attributing to `com.something.pulse` inside a
 game's process is a different animal than the game itself asking.

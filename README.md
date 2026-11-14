@@ -1,10 +1,11 @@
 # Eave
 
 Acoustic counter-surveillance for Android. It answers one question: **is there a
-covert audio channel in my room right now, and which app is reporting it?**
+covert audio channel in my room right now?**
 
-Detector, not defender. Eave tells you a channel is live and attributes it where
-the OS permits. It does not block, jam, or mislead.
+Detector, not defender. Eave tells you a channel is live, where it sits, and what
+shape it has. It does not block, jam, or mislead, and in this scope it does not try
+to name the application that reports it either.
 
 > Status: threat model and architecture settled, physical-layer detectors validated
 > offline against synthetic signals, no Android code yet. Nothing here has been
@@ -43,14 +44,54 @@ Passive fingerprinting has no signature on Plane A at any sensitivity. Ultrasoni
 beacons have no signature on Plane C until something reports. These are not
 substitutable and an acoustic-only tool is looking at half the problem.
 
+**Eave is currently built on Plane A only.** That is a deliberate narrowing, and its
+cost is stated in the next section rather than buried.
+
+---
+
+## Scope: listen for emitters, nothing else
+
+Eave detects devices *transmitting* over sound. It does not inspect which apps hold
+the microphone, does not read per-application traffic, and does not require any
+privileged setup: no root, no Shizuku, no adb companion, no usage-access grant. One
+runtime permission, one foreground service, one APK anyone can install.
+
+That removes the hardest problem in the design. See [the permission wall](#the-constraint-that-shapes-everything)
+for what we are *not* having to fight, kept in the README because it is a trap for
+anyone building the other kind of tool.
+
+It also removes the ability to see the most widely deployed threat, and pretending
+otherwise would make this tool useless for its actual purpose.
+
+| Threat | Emission | Can Eave see it? |
+|---|---|---|
+| Retail/kiosk ultrasonic beacons (Lisnr, Shopkick shape) | 18–20 kHz from a local speaker | **Yes**, best case: no codec in the path |
+| Set-top, soundbar or TV firmware injecting after the decoder | 18–20 kHz from its own amp | **Yes**, same reason |
+| A device in your home emitting a pairing/cross-device tone | 18–20 kHz from its own speaker | **Yes**, and no privilege needed to hear it |
+| Broadcast/streaming watermark carried by the TV loudspeaker (VP1, NAES, CBET) | 1–6.3 kHz, under masking | **Partly**: presence and timing yes; decoding the identifier needs licensed codebooks |
+| Television-internal content recognition (ACR) | none, it samples internally | **No** |
+| Passive phone-side fingerprinting (Alphonso/SecondSync shape) | none, it only listens | **No, ever** |
+
+The last two rows are the whole reason Plane B exists, and they are simply outside
+what an emitter detector can know. Passive fingerprinting is Shazam run in reverse:
+it consumes sound and never produces any, so there is no signal to detect, no
+matter how good the receiver is. A house can be fully instrumented this way and
+Eave will report a quiet room, correctly.
+
+The trade is worth making anyway. Plane A is the only part that works on hardware
+you don't control, needs nobody's permission, and can be published where anyone can
+install it. It is also where the interesting signal-processing failures live.
+
 [arp]: https://mlsec.org/docs/2017a-eurosp.pdf
 [nyt]: https://www.nytimes.com/2017/12/28/business/media/alphonso-app-tracking.html
 
 ---
 
-## The constraint that shapes everything
+## The wall we no longer have to climb
 
-Verified in AOSP `main`, not inferred:
+Retained because it is the most common dead end for anyone attempting the *other*
+kind of tool, the kind that reports which app holds the microphone. That design is
+closed to ordinary apps, and it fails silently rather than loudly:
 
 ```java
 // services/core/java/com/android/server/appop/AppOpsService.java
@@ -160,27 +201,41 @@ Three traps this project already fell into, recorded so the next one doesn't:
 - **A content-change test must run where the content lives.** Measuring it at 13–16
   kHz on band-limited material gives an empty, near-stationary band whose
   correlation sits on the decision threshold, so tiny level changes flip it.
+- **A learned threshold in the dB domain is deaf in a quiet room.** This one cost the
+  most time and is the reason D1 was replaced. Setting the alarm as
+  `ambient_mean + k·sigma` over the 17–21 kHz band behaves exactly backwards: with an
+  essentially empty band the per-window dB level is a relative measurement of
+  almost nothing, its MAD inflates to 8.56 dB against 2.71 dB for a loaded band, and
+  the gate lands at +29 dB, *above* the measured level of a real −40 dBFS tone. The
+  detector was sensitive in a noisy room and blind in a quiet one. `D1b` fixed it by
+  becoming scale-invariant: measure the peak bin against the median of its own band
+  and require the same bin to hold that contrast across windows. No learned baseline,
+  so nothing to go blind with.
 
 ---
 
 ## Roadmap
 
+Emitter-only scope, so nothing here needs a privileged partner process.
+
 | Phase | Deliverable |
 |---|---|
-| P0 | On-device feasibility: does the target phone advertise `UNPROCESSED`, what is its actual high-frequency droop, do D1/D2 fire through a real speaker and mic |
-| P1 | Plane A app: capture, D1 + D2, live spectrogram, evidence log |
-| P2 | Plane B: Shizuku service, system-wide `OPSTR_RECORD_AUDIO` watch, timeline correlation |
-| P3 | Active probes: trap broadcast plus per-UID traffic periodicity. Attribution starts here |
-| P4 | D3 VP1 decode, D4 Nielsen band, D5 accelerometer/mic coherence |
-| P5 | LAN gateway companion for television-side uploads |
+| P0 | On-device feasibility, **the gate for everything else**: does the phone advertise `UNPROCESSED`, what is its measured high-frequency droop curve, do D1b/D2 fire through a real loudspeaker and microphone at realistic distances |
+| P1 | The simple app: capture ladder, D1b, live spectrogram, alarm with time-stamped evidence log. Genuinely useful alone |
+| P2 | Loopback calibration: Eave plays its own marks and checks what its own receiver recovers, producing a per-device sensitivity profile and a self-test that proves the chain still works |
+| P3 | D2 beacon demodulation and classification, so "something is emitting" becomes "that is a SilverPush-shaped / Lisnr-shaped beacon at 19.2 kHz" |
+| P4 | In-band receivers: D3 VP1 header acquisition, D4 Nielsen-band occupancy and TDM periodicity. Presence and timing, not identifier decoding |
+| P5 | Optional LAN gateway, outside the app, for television-side uploads that never touch the air |
 
-**The trap broadcast** is the centrepiece of P3. Eave plays a synthetic mark carrying
-a fresh random ID from its own speaker at a moment it recorded, then watches for any
-package that wakes and uploads inside the response window. Ground truth is Eave's, so
-a correlate is attributable and the trial is repeatable per app. A control run with
-the television off measures the false-correlate rate. It converts watching into an
-experiment with a known answer, which is the only route to "app X reported" rather
-than "app X might report".
+**Loopback calibration** replaces what was going to be the trap broadcast. The
+original design played a synthetic mark with a fresh random ID and watched which
+application woke up and uploaded, which required per-app visibility. Without it the
+trial can attribute nothing, so the idea is rebuilt around what an emitter-only tool
+*can* verify: play a known mark through the phone's own speaker, confirm the receiver
+recovers it at the expected level, and sweep frequency to map where this particular
+unit stops hearing. That converts "Eave says the room is clean" from a claim into a
+measurement, and catches the failure mode where the mic path quietly low-passes the
+band before Eave ever sees it.
 
 ---
 
@@ -193,9 +248,14 @@ Stated plainly, because a tool that overstates its reach is worse than none.
   television's own settings can see it.
 - **The streaming metadata path involves no sound.** Where a watermark is lifted into
   an ID3 box or data PID, the app reads the tag and there is no acoustic event to find.
-- **A well-behaved fingerprinting SDK looks like a normal app on the network.**
-  Foreground-only sampling, on-device hashing, jittered upload: Plane C cannot
-  distinguish it. Plane B still sees the microphone open, which is why B is not optional.
+- **Phone-side passive fingerprinting is invisible to this tool, permanently.** It
+  emits nothing, so no receiver sensitivity and no detector design changes that. In
+  the full three-plane design the microphone-occupancy plane was the answer, and this
+  scope deliberately does not include it. The honest statement for the shipping tool
+  is: Eave detects channels, not listeners.
+- **Correlating an emission to a reporting application needs per-app visibility**, which
+  this scope excludes. Eave can prove a beacon is in the room and name its shape and
+  frequency. It cannot, on its own, name the application that forwards it.
 - **Eave can only hear while it is recording**, and Android blocks background
   microphone access for Eave exactly as it does for the trackers. An always-on mode
   with a concealed foreground service is technically reachable and would make Eave
