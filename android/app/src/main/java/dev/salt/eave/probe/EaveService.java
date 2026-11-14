@@ -10,6 +10,7 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.AudioRecordingConfiguration;
 import android.media.MediaRecorder;
+import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
@@ -49,10 +50,9 @@ public final class EaveService extends Service {
     private static String lastKind = "";
     private static int repeats = 0;
 
-    /** Where a finding goes when someone is listening for it. The service
-     *  installs a logcat writer; with no service, as in the JVM tests, nothing
-     *  happens and no android.util.Log class is ever touched. */
-    /** Where a finished line goes: logcat, when a capture is live. */
+    /** Where a finished line goes: logcat, when a capture is live. The
+     *  service installs that writer; with no service, as in the JVM tests,
+     *  nothing happens and no android.util.Log class is ever touched. */
     static volatile java.util.function.Consumer<String> AUDIT = line -> {
     };
 
@@ -138,9 +138,21 @@ public final class EaveService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        // The microphone permission must be granted before startForeground
+        // for a microphone-typed service (the FGS docs are explicit about the
+        // order). The Activity guards this; a bare `am start` does not, and
+        // on Android 14+ the un-guarded call is a crash instead of a message.
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "EAVE_NO_PERMISSION RECORD_AUDIO not granted; refusing start");
+            return START_NOT_STICKY;
+        }
         channel();
         startForeground(1, notification("Eave is listening", "Analysing the room, not storing it"));
-        if (worker == null) {
+        // isAlive, not null: if the capture loop died (stalled reads, a
+        // framework exception) the field is non-null but nothing is listening,
+        // and a null-check would turn "Start again" into a no-op forever.
+        if (worker == null || !worker.isAlive()) {
             stop = false;
             running = true;
             startedAt = System.currentTimeMillis();
@@ -223,6 +235,7 @@ public final class EaveService extends Service {
             captureInfo = "no AudioRecord source would initialise";
             Log.e(TAG, "EAVE_NO_SOURCE");
             running = false;
+            stopSelf();        // same rule as the finally below
             return;
         }
 
@@ -263,6 +276,11 @@ public final class EaveService extends Service {
                     }
                     AudioDeviceInfo routed = rec.getRoutedDevice();
                     AudioRecordingConfiguration cfg = rec.getActiveRecordingConfiguration();
+                    // isClientSilenced() is API 29 per the reference; calling it
+                    // unguarded on minSdk 26 is a NoSuchMethodError on Android 8-10,
+                    // thrown from the one loop that must not die.
+                    boolean silenced = Build.VERSION.SDK_INT >= 29
+                            && cfg != null && cfg.isClientSilenced();
                     ambient = String.format(Locale.US,
                             "17-21 kHz median %.1f dBFS, best tone %.0f Hz at %.1f dBFS "
                                     + "(%.1f dB over band). Mark z now %.1f (%s), session max "
@@ -272,8 +290,7 @@ public final class EaveService extends Service {
                             mark.sessionMaxZ, mark.sessionMaxLabel,
                             routed == null ? "route unknown"
                                     : "input " + routed.getType()
-                                    + (cfg != null && cfg.isClientSilenced()
-                                    ? ", SILENCED BY SYSTEM" : ""));
+                                    + (silenced ? ", SILENCED BY SYSTEM" : ""));
                 }
             }
         } catch (Exception e) {
@@ -290,6 +307,10 @@ public final class EaveService extends Service {
             AUDIT = line -> {
             };
             Log.i(TAG, "CAPTURE_CLOSED");
+            // The listener died; a foreground service whose only job is
+            // listening must not keep a notification that claims otherwise.
+            // stopSelf runs onDestroy on the main thread, never here.
+            stopSelf();
         }
     }
 
