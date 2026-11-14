@@ -47,11 +47,14 @@ final class MarkDetector {
      * A 30 ms mark burst at -40 dBFS produced 7.79, at -34 dBFS 38.8, and it
      * saturates near 87. So the gate has to clear 2.23 and can sit below 7.79.
      *
-     * It is still provisional. The background here is white noise, which has a
-     * light envelope tail; real programme has beats, syllables and scene cuts,
-     * which are exactly the things that produce a confident-looking wrong
-     * period. Until this is re-measured against real recordings and a real
-     * quiet room, 4.0 is a claim about surrogate audio and nothing more.
+     * It is now known NOT to be surrogate-safe. Real programme (docs/
+     * REAL-AUDIO.md: five recordings, 585 band-evaluations on a cyclic
+     * stream) produced z 3.7-3.8 on speech transcodes and 6.07 on a film
+     * OST, the last one an actual false alarm, with the follow-up reading
+     * (4.97) stopped from a second alarm only by MIN_ABS_RISE. The 2.23
+     * surrogate max understates the real NAES2 tail by about 4 dB. The
+     * gate stands provisional-and-flagged until recalibrated on a corpus;
+     * see docs/REAL-AUDIO.md before quoting any PERIODIC MARK confidence.
      */
     static final double Z_GATE = 4.0;
     static final double MIN_ABS_RISE = 0.05;
