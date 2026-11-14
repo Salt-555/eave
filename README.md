@@ -13,7 +13,8 @@ to name the application that reports it either.
 > Real-microphone feasibility is measured in [docs/DEVICE-P0.md](docs/DEVICE-P0.md);
 > false-alarm behaviour against real programme audio in
 > [docs/REAL-AUDIO.md](docs/REAL-AUDIO.md) — the held-tone gate holds there
-> (0/5 recordings, 14.7 dB margin), the mark gate does not and is flagged.
+> (0/5 recordings, 14.7 dB margin); the mark gate was recalibrated on a
+> 57-minute corpus after the original one produced a false alarm.
 > Nothing has yet been measured over the air; the −95 dBFS floor constant is
 > still a placeholder. See [Limits](#limits).
 

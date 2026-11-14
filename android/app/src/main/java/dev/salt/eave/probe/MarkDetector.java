@@ -39,25 +39,31 @@ final class MarkDetector {
     static final double HP_HZ = 0.8;
     static final double LP_HZ = 40.0;
     /**
-     * Set from a measurement, not from instinct, because the first two values I
-     * picked for this were invented and one of them was unreachable.
+     * Gates are per-band and calibrated, not per-instinct.
      *
-     * Surrogate run (6 clips x 45 s, programme at -26 dBFS, Instrument.java):
-     * no mark at all produced a worst-case z of 2.23 across all three bands.
-     * A 30 ms mark burst at -40 dBFS produced 7.79, at -34 dBFS 38.8, and it
-     * saturates near 87. So the gate has to clear 2.23 and can sit below 7.79.
+     * History: 4.0/0.05 came from a white-noise surrogate (worst z 2.23,
+     * Instrument.java). That surrogate understated real programme. The corpus
+     * run (docs/REAL-AUDIO.md: 32 real files, 2.59 h of evaluations through
+     * this exact code) put the clean-programme tail at z 6.0 / rise 0.21 for
+     * NAES2, z 10.6 / rise 0.17 for NAES6 (unt.mp4 genuinely repeats at
+     * 1.94 s - inside this detector's +/-15% window around its 1.87 s target),
+     * and z 5.2 for CBET. The gate that actually separates the tail from
+     * marks is the absolute-rise term, not z: mark evaluations that are
+     * visible at all sit at rise ~0.87 (saturated), every corpus tail row
+     * sits at rise <= 0.21. 8.0 / 0.2 is 0 corpus false alarms per band over
+     * 2.59 h with the detected-mark population untouched (100% of bedA mark
+     * evaluations kept).
      *
-     * It is now known NOT to be surrogate-safe. Real programme (docs/
-     * REAL-AUDIO.md: five recordings, 585 band-evaluations on a cyclic
-     * stream) produced z 3.7-3.8 on speech transcodes and 6.07 on a film
-     * OST, the last one an actual false alarm, with the follow-up reading
-     * (4.97) stopped from a second alarm only by MIN_ABS_RISE. The 2.23
-     * surrogate max understates the real NAES2 tail by about 4 dB. The
-     * gate stands provisional-and-flagged until recalibrated on a corpus;
-     * see docs/REAL-AUDIO.md before quoting any PERIODIC MARK confidence.
+     * The honest cost, measured in the same run: a -34 dBFS mark on a file
+     * with loud in-band programme (mssp: 4.5-6.3 kHz content ~13 dB above
+     * the mark) is invisible at ANY gate on this list - TPR 0.00, rise 0.02.
+     * This detector sees marks that dominate their band, not marks buried
+     * under real 5 kHz content.
      */
-    static final double Z_GATE = 4.0;
-    static final double MIN_ABS_RISE = 0.05;
+    static final double Z_GATE_NAES2 = 8.0;
+    static final double Z_GATE_NAES6 = 8.0;
+    static final double Z_GATE_CBET = 4.0;
+    static final double MIN_ABS_RISE = 0.2;
     static final double MIN_MAD = 0.01;
 
     private static final class Band {
@@ -66,6 +72,7 @@ final class MarkDetector {
         final double hz1;
         final double periodSec;
         final String periodName;
+        final double zGate;
         final Biquad[] filter;
         final double[] env = new double[HISTORY];
         int pos = 0;
@@ -73,12 +80,14 @@ final class MarkDetector {
         int filled = 0;
         double maxZ = -999.0;
 
-        Band(String name, double hz0, double hz1, double periodSec, String periodName) {
+        Band(String name, double hz0, double hz1, double periodSec, String periodName,
+                double zGate) {
             this.name = name;
             this.hz0 = hz0;
             this.hz1 = hz1;
             this.periodSec = periodSec;
             this.periodName = periodName;
+            this.zGate = zGate;
             double f0 = Math.sqrt(hz0 * hz1);
             double q = f0 / Math.max(1.0, hz1 - hz0);
             // Two second-order sections: one is too wide a skirt to keep an
@@ -88,9 +97,9 @@ final class MarkDetector {
     }
 
     private final Band[] bands = {
-            new Band("NAES2-class 4.5-6.3 kHz", 4500, 6300, 1.870, "1.87 s"),
-            new Band("NAES6-class 3.0-4.8 kHz", 3000, 4800, 4.800, "4.80 s"),
-            new Band("CBET-class 1-3 kHz", 1000, 3000, 4.800, "4.80 s"),
+            new Band("NAES2-class 4.5-6.3 kHz", 4500, 6300, 1.870, "1.87 s", Z_GATE_NAES2),
+            new Band("NAES6-class 3.0-4.8 kHz", 3000, 4800, 4.800, "4.80 s", Z_GATE_NAES6),
+            new Band("CBET-class 1-3 kHz", 1000, 3000, 4.800, "4.80 s", Z_GATE_CBET),
     };
 
     private final double[] re = new double[HISTORY];
@@ -213,7 +222,7 @@ final class MarkDetector {
                 evalTop = z;
                 evalTopLabel = band.name + " @" + band.periodName;
             }
-            if (z >= Z_GATE && (target - med) >= MIN_ABS_RISE) {
+            if (z >= band.zGate && (target - med) >= MIN_ABS_RISE) {
                 alarms++;
                 report.report("PERIODIC MARK",
                         String.format("%s repeats every %s, z=%.1f against neighbouring lags, "

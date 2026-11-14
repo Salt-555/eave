@@ -225,45 +225,34 @@ public class DetectorTest {
     }
 
     /**
-     * The sensitivity floor, pinned. 14 dB below the programme level is where
-     * this statistic stops seeing the mark at all: at -40 dBFS the measured z is
-     * 7.8 against a clean-case worst of 2.2, and at -46 dBFS it is 2.2, which is
-     * the clean case.
+     * The sensitivity floor, re-pinned at the calibrated gates.
      *
-     * This matters as a limit, not an achievement. Broadcast watermarks are
-     * generally specified well below the programme, commonly quoted 20 dB or
-     * more down, so a mark at real broadcast level is expected to be missed by
-     * this detector as built. Saying so here is the point of the test.
-     */
-    /**
-     * Fourteen dB below the programme is the marginal band, and the assertion
-     * says so rather than choosing a seed that flatters it.
-     *
-     * Measured over six independently generated clips: worst clean-case z is
-     * 2.23, and at this mark level the median clip reaches z 5.6 with the best
-     * at 7.8 and at least one under the gate of 4.0. So at least three of six
-     * alarm and a single-clip test would be a coin toss decided by the seed. A
-     * detector whose reported behaviour depends on which clip you happened to
-     * record is not a capability claim, which is why this test runs the six.
+     * Under the old 4.0/0.05 gate this test watched the six clips straddle
+     * the threshold. Under the corpus-calibrated 8.0/0.2 gate (see the gate
+     * comment in MarkDetector) the whole straddle is below the gate: measured
+     * best-z per clip over these exact six seeds is 2.63, 3.48, 5.43, 5.59,
+     * 6.62, 7.79, and none of them alarms. That is the calibration buying
+     * zero false alarms on 2.59 h of real programme, and it is a real loss,
+     * recorded here rather than hidden: a mark 14 dB under a synthetic
+     * surrogate sits inside the real-programme z tail, so this detector
+     * honestly cannot promise to see it. What it can see is a mark that
+     * dominates its band (bedA corpus runs: rise ~0.87, saturated).
      */
     @Test
-    public void aMarkFourteenDbBelowTheProgrammeIsDetectedOnMostButNotAllClips() {
-        int clips = 6;
-        int withAlarm = 0;
-        double highest = -999, lowest = -999;
-        for (int clip = 0; clip < clips; clip++) {
+    public void aMarkFourteenDbBelowTheProgrammeSitsBelowTheCalibratedGate() {
+        double[] z = new double[6];
+        for (int clip = 0; clip < 6; clip++) {
             MarkDetector d = new MarkDetector();
             d.report = capture();
             pump(d, periodicMarks(1.870, 45.0, -40.0, -26.0, 1000L + clip * 77));
-            if (d.alarms >= 1) {
-                withAlarm++;
-            }
-            highest = Math.max(highest, d.maxZ(0));
-            lowest = Math.min(lowest, d.maxZ(0));
+            assertEquals("no clip in the measured straddle may alarm at 8.0/0.2, clip "
+                    + clip + " reached z " + d.maxZ(0), 0, d.alarms);
+            z[clip] = d.maxZ(0);
         }
-        assertTrue("expected most of six clips to alarm at 14 dB under programme, saw "
-                        + withAlarm + " of " + clips + " (z range " + lowest + " to " + highest + ")",
-                withAlarm >= 3 && withAlarm < clips);
+        double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+        for (double v : z) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+        assertTrue("measured straddle must stay where it was measured (saw " + lo
+                + " to " + hi + ")", lo > 2.0 && hi < 8.0);
     }
 
     @Test
