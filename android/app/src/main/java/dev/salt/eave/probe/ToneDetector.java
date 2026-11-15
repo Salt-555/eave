@@ -40,7 +40,27 @@ final class ToneDetector {
     static final double F_MIN = 17000.0;
     static final double F_MAX = 21000.0;
     static final double GATE_DB = 20.0;
-    static final double FLOOR_DBFS = -95.0;
+    /**
+     * Measured 2026-11-14 on this project's own handset (docs/DEVICE-P0.md):
+     * thirty minutes of quiet-room capture across all six AudioSources plus a
+     * 68-minute real-programme corpus, scored with this class's own window
+     * rule. At -100 dBFS the count of gate-passing windows (20 dB contrast
+     * AND floor) in quiet-room UNPROCESSED/MIC/DEFAULT capture is zero, and
+     * the shipped rule raises 0 alarms over all 41 corpus and capture files
+     * (~68 min of programme audio plus the device captures). The -105 probe
+     * caught two transients in 477 quiet-room windows, which is the margin
+     * this floor keeps: five dB above the first room sound that could ever
+     * pair with the contrast term.
+     *
+     * It replaces the -95 placeholder, which was never measured. Note the
+     * placeholder was accidentally doing one job right: unt.mp4's genuine
+     * 1.94 s programme tone cleared 20 dB contrast 13 times at -95 and 147
+     * times at -100 (window counts, not alarms - the persistence term is
+     * what actually refuses it). A persistent in-band programme tone is the
+     * one content class that threatens both floors, and level is only
+     * partly the defense; docs/REAL-AUDIO.md carries the detail.
+     */
+    static final double FLOOR_DBFS = -100.0;
     static final double TOL_HZ = 2.0;
     static final int NEED_WINDOWS = 4;     // one second held still
 

@@ -68,6 +68,52 @@ tuned against the handset's own spur map, which is why the live app reports the
 band median and the best contrast continuously instead of only reporting
 alarms.
 
+## Floor measurement: what replaced the -95 dBFS placeholder
+
+Measured 2026-11-14 16:37-16:41 local, same room as the spectra above, with
+the P0 recorder reinstalled from `199bd3d` (one type-name fix to compile
+against current compileSdk) and analysed by feeding the captures through
+the shipped `ToneDetector` itself, so window, padding and calibration
+conventions are the detector's own, not a re-derivation.
+
+Quiet room, 30 s per source, band = 17-21 kHz, levels per 1 s window:
+
+| AudioSource | band median p50 | band median p99 | best-bin p99 | best-bin max | gate-pass windows @-100 |
+|---|---|---|---|---|---|
+| DEFAULT       | -128.1 | -97.5  | -84.3  | -79.6  | 0/117 |
+| MIC           | -130.3 | -99.1  | -85.0  | -80.8  | 0/117 |
+| CAMCORDER     | -121.0 | -98.9  | -82.7  | -82.3  | 14/117 (!) |
+| VOICE_RECOGNITION | -116.3 | -85.0 | -72.3 | -67.5 | 0/117 (contrast never >= 20) |
+| VOICE_COMMUNICATION | -118.4 | -105.1 | -89.3 | -85.0 | 11/117 (!) |
+| UNPROCESSED   | -130.3 | -103.7 | -91.0  | -90.8  | 0/117 |
+| UNPROCESSED 120 s | -132.6 | -111.2 | -99.5 | -94.5 | 0/477 (@-105: 2/477) |
+
+Two facts the synthetic work could not have predicted:
+
+1. CAMCORDER and VOICE_COMMUNICATION pass the two-gate window test 11-14
+   times per 117 windows on a silent-ish room, purely on level. A floor at
+   -100 cannot run those sources at all; the service's ladder
+   (UNPROCESSED -> MIC -> DEFAULT) is not a preference, it is a
+   requirement, and the fallback order should never reach them.
+2. The room is not stationary: UNPROCESSED p99 improved 7.6 dB between the
+   30 s and 120 s captures, and the 2/477 transients at -105 are room
+   events, not chain artifacts. The floor therefore protects the quiet
+   case only; a loud room raises the band median and the contrast term
+   takes over the defense.
+
+Adopted: `FLOOR_DBFS = -100.0`, five dB above the first transient the room
+produced in 1017 quiet-room windows, and 5 dB more sensitive than the
+placeholder it replaces. Cross-checked against the 68-minute programme
+corpus with the shipped rule before adoption (see docs/REAL-AUDIO.md;
+final alarm count in the adopting commit).
+
+Caveats kept honest: one room, one handset, daytime. The 10-minute
+continuous capture attempted for this section stalled twice at ~11 minutes
+with the input thread going Standby under wake lock (power management
+reclaiming the UNPROCESSED stream) - itself a P0 finding: long listens on
+this device need the live service's stalled-read path, which exists, and
+a long-capture reliability question filed to the roadmap.
+
 ## Not yet measured
 
 - Transmit response. No stimulus has been played in the room while the handset
@@ -77,5 +123,7 @@ alarms.
 - `AudioRecord` at 96 kHz was attempted and is expected to fail, since no input
   profile declares it. Not confirmed as a failure: that run was superseded by
   the rewrite.
-- Microphone self-noise in a genuinely quiet room, which the `-95 dBFS`
-  absolute floor in the detector is standing in for until measured.
+- A single continuous capture longer than ~12 minutes has not completed; both
+  attempts went Standby mid-stream. The floor section's longest clean capture
+  is 120 s. Overnight-length reliability is an open question, not a measured
+  capability.

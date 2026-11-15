@@ -119,6 +119,20 @@ Bounds stated properly: 0/2.59 h supports a 95% upper bound of ~1.2 FA/h
 at the adopted gates, not zero-as-in-never. The wide lag window is a known
 open risk this calibration papers over rather than fixes.
 
+## Tone floor retune: -95 placeholder -> -100 measured (P0, same day)
+
+The device floor measurement (docs/DEVICE-P0.md) adopted -100 dBFS for
+`FLOOR_DBFS`. Before adoption it was cross-checked exactly the way the
+placeholder never was: every corpus file and every device capture, 41
+files, ~68 min of programme plus ~10 min of room, fed through the shipped
+ToneDetector compiled with the candidate constant. Result: 0 alarms,
+including unt.mp4, whose genuine 1.94 s programme tone clears 20 dB
+contrast in 147 of 393 windows at -100 (13 at -95) and still never
+sustains the same-bin persistence term. The naive streak proxy without
+bin tolerance predicts 32 alarms there; the shipped rule predicts 0 - the
+persistence term is load-bearing against content tones, which is the
+strongest evidence yet that the three-term rule needs all three terms.
+
 ## Rules this run leaves behind
 
 - A false-alarm study must check that the detector actually evaluated

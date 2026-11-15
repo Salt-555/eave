@@ -123,10 +123,12 @@ public class DetectorTest {
     @Test
     public void aLoudContrastBelowTheAbsoluteFloorDoesNotAlarm() {
         // This is the 64 kbps AAC case: the contrast can be enormous while the
-        // level is under the microphone's own noise, and in that situation the
-        // contrast is measuring the encoder, not a beacon.
+        // level is under the calibrated floor, and in that situation the
+        // contrast is measuring the encoder, not a beacon. Written relative to
+        // FLOOR_DBFS (2 dB under it) so retuning the constant moves the test
+        // with it instead of silently pinning an old value.
         ToneDetector d = new ToneDetector();
-        pump(d, tone(19000, -98.0, 6.0, -80.0));
+        pump(d, tone(19000, ToneDetector.FLOOR_DBFS - 2.0, 6.0, -80.0));
         assertTrue("contrast alone should clear the gate, saw " + d.bestContrastDb,
                 d.bestContrastDb > 20.0);
         assertTrue("level should sit under the floor, saw " + d.bestDbfs,
